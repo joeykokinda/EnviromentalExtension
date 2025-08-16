@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM Environmental Impact</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="logo">
+        <span class="icon">🌱</span>
+        <h1>AI Impact Tracker</h1>
+      </div>
+      <div class="date" id="currentDate"></div>
+    </header>
+
+    <div class="impact-level" id="impactLevel">
+      <div class="level-indicator" id="levelIndicator"></div>
+      <span class="level-text" id="levelText">Low Impact</span>
+    </div>
+
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-icon">🔢</div>
+        <div class="metric-content">
+          <div class="metric-value" id="queriesCount">0</div>
+          <div class="metric-label">Queries Today</div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon">⚡</div>
+        <div class="metric-content">
+          <div class="metric-value" id="energyUsage">0</div>
+          <div class="metric-label">Energy (Wh)</div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon">🌍</div>
+        <div class="metric-content">
+          <div class="metric-value" id="carbonEmissions">0</div>
+          <div class="metric-label">Carbon (g CO₂)</div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon">💧</div>
+        <div class="metric-content">
+          <div class="metric-value" id="waterUsage">0</div>
+          <div class="metric-label">Water (ml)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="comparison-section">
+      <h3>Environmental Equivalent</h3>
+      <div class="comparison-grid">
+        <div class="comparison-item">
+          <span class="comparison-icon">🚗</span>
+          <span class="comparison-text">
+            <span id="carMiles">0</span> miles driven
+          </span>
+        </div>
+        <div class="comparison-item">
+          <span class="comparison-icon">🌳</span>
+          <span class="comparison-text">
+            <span id="treesNeeded">0</span> trees needed
+          </span>
+        </div>
+        <div class="comparison-item">
+          <span class="comparison-icon">📱</span>
+          <span class="comparison-text">
+            <span id="phoneCharges">0</span> phone charges
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="progress-section">
+      <h3>Daily Goal Progress</h3>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <div class="progress-text">
+        <span id="progressPercentage">0%</span>
+        <span id="progressRemaining">100g remaining</span>
+      </div>
+    </div>
+
+    <div class="tips-section" id="tipsSection">
+      <h3>💡 Efficiency Tips</h3>
+      <ul id="tipsList"></ul>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-secondary" id="resetBtn">Reset Today</button>
+      <button class="btn btn-primary" id="detailsBtn">View Details</button>
+    </div>
+
+    <footer class="footer">
+      <div class="footer-text">
+        Last updated: <span id="lastUpdated">Never</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="calculations.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
