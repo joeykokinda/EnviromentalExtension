@@ -1,46 +1,32 @@
-class LLMWebsiteDetector {
+console.log('LLM Environmental Impact Tracker content script loading...');
+
+class ChatGPTTracker {
   constructor() {
     this.isActive = false;
     this.currentProvider = null;
     this.observers = [];
-    this.queryCount = 0;
-    this.lastActivity = Date.now();
+    this.processedMessages = new Set();
     
     this.providerConfigs = {
       'chat.openai.com': {
         name: 'ChatGPT',
         selectors: {
-          inputArea: '[data-testid="prompt-textarea"], textarea[placeholder*="message"]',
-          sendButton: '[data-testid="send-button"], button[aria-label*="Send"]',
-          responseContainer: '[data-message-author-role="assistant"]',
-          newConversation: 'button[aria-label*="New chat"]'
+          messageContainer: '[data-message-id]',
+          userMessage: '.user-message-bubble-color',
+          assistantMessage: 'p[data-start][data-end]',
+          inputArea: '#prompt-textarea, [data-testid="prompt-textarea"]',
+          sendButton: '[data-testid="send-button"]',
+          conversationContainer: 'main'
         }
       },
       'claude.ai': {
         name: 'Claude',
         selectors: {
+          messageContainer: '[data-testid="message"]',
+          userMessage: '[data-is-author="true"]',
+          assistantMessage: '[data-is-author="false"]',
           inputArea: 'div[contenteditable="true"]',
-          sendButton: 'button[aria-label*="Send"]',
-          responseContainer: '[data-is-streaming="false"]',
-          newConversation: 'button[aria-label*="Start new conversation"]'
-        }
-      },
-      'bard.google.com': {
-        name: 'Bard',
-        selectors: {
-          inputArea: 'rich-textarea textarea',
-          sendButton: 'button[aria-label*="Send"]',
-          responseContainer: '.model-response-text',
-          newConversation: 'button[aria-label*="Reset chat"]'
-        }
-      },
-      'gemini.google.com': {
-        name: 'Gemini',
-        selectors: {
-          inputArea: 'rich-textarea textarea',
-          sendButton: 'button[aria-label*="Send"]',
-          responseContainer: '.model-response-text',
-          newConversation: 'button[aria-label*="New chat"]'
+          sendButton: 'button[aria-label*="Send"]'
         }
       }
     };
@@ -49,12 +35,19 @@ class LLMWebsiteDetector {
   }
   
   init() {
+    console.log(' Content script starting on:', window.location.href);
     this.detectProvider();
     
     if (this.currentProvider) {
+      console.log(` LLM Environmental Tracker initialized for ${this.currentProvider.name}`);
+      console.log(' Provider config:', this.currentProvider);
       this.setupObservers();
-      this.trackPageActivity();
-      console.log(`LLM tracker initialized for ${this.currentProvider.name}`);
+      setTimeout(() => {
+        this.scanExistingMessages();
+      }, 2000);
+    } else {
+      console.log(' LLM Tracker: Not on a supported LLM website');
+      console.log(' Current hostname:', window.location.hostname);
     }
   }
   
@@ -72,256 +65,237 @@ class LLMWebsiteDetector {
   }
   
   setupObservers() {
-    if (!this.currentProvider) return;
-    
-    this.observeInputActivity();
-    this.observeResponseGeneration();
-    this.observePageChanges();
-  }
-  
-  observeInputActivity() {
-    const { inputArea, sendButton } = this.currentProvider.selectors;
-    
-    const inputObserver = new MutationObserver(() => {
-      const input = document.querySelector(inputArea);
-      if (input && !input.dataset.trackerAttached) {
-        this.attachInputListeners(input);
-        input.dataset.trackerAttached = 'true';
-      }
-    });
-    
-    inputObserver.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-    
-    this.observers.push(inputObserver);
-    
-    const existingInput = document.querySelector(inputArea);
-    if (existingInput) {
-      this.attachInputListeners(existingInput);
-    }
-  }
-  
-  attachInputListeners(input) {
-    const sendButton = document.querySelector(this.currentProvider.selectors.sendButton);
-    
-    if (sendButton) {
-      sendButton.addEventListener('click', () => {
-        this.handleQuerySubmission(input);
-      });
-    }
-    
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || !e.shiftKey)) {
-        this.handleQuerySubmission(input);
-      }
-    });
-  }
-  
-  observeResponseGeneration() {
-    const { responseContainer } = this.currentProvider.selectors;
-    
-    const responseObserver = new MutationObserver((mutations) => {
+    const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === 'childList') {
           mutation.addedNodes.forEach((node) => {
             if (node.nodeType === Node.ELEMENT_NODE) {
-              const responses = node.querySelectorAll(responseContainer);
-              responses.forEach((response) => {
-                if (!response.dataset.trackerProcessed) {
-                  this.handleResponseGeneration(response);
-                  response.dataset.trackerProcessed = 'true';
-                }
-              });
+              this.checkForNewMessages(node);
             }
           });
         }
       });
     });
     
-    responseObserver.observe(document.body, {
+    observer.observe(document.body, {
       childList: true,
       subtree: true
     });
     
-    this.observers.push(responseObserver);
+    this.observers.push(observer);
   }
   
-  observePageChanges() {
-    const urlObserver = new MutationObserver(() => {
-      if (window.location.href !== this.lastUrl) {
-        this.lastUrl = window.location.href;
-        this.handlePageChange();
+  scanExistingMessages() {
+    console.log(' Scanning existing messages...');
+    console.log(' User selector:', this.currentProvider.selectors.userMessage);
+    console.log(' Assistant selector:', this.currentProvider.selectors.assistantMessage);
+    
+    const userMessages = document.querySelectorAll(this.currentProvider.selectors.userMessage);
+    const assistantMessages = document.querySelectorAll(this.currentProvider.selectors.assistantMessage);
+    
+    console.log(` Found ${userMessages.length} user messages and ${assistantMessages.length} assistant messages`);
+    
+    // Debug: log all potential message elements
+    const allDivs = document.querySelectorAll('div');
+    console.log(` Total divs on page: ${allDivs.length}`);
+    
+    // Look for any elements that might contain messages
+    const potentialUserMessages = document.querySelectorAll('[class*="user"]');
+    const potentialAssistantMessages = document.querySelectorAll('[data-start]');
+    console.log(` Potential user elements: ${potentialUserMessages.length}`);
+    console.log(` Potential assistant elements: ${potentialAssistantMessages.length}`);
+    
+    userMessages.forEach((msg, index) => {
+      const msgId = `existing-user-${index}-${msg.textContent.substring(0, 20)}`;
+      console.log(` Processing user message ${index}:`, msg.textContent.substring(0, 50));
+      this.processMessage(msg, 'user', msgId);
+    });
+    
+    assistantMessages.forEach((msg, index) => {
+      const msgId = `existing-assistant-${index}-${msg.getAttribute('data-start') || index}`;
+      console.log(` Processing assistant message ${index}:`, msg.textContent.substring(0, 50));
+      this.processMessage(msg, 'assistant', msgId);
+    });
+  }
+  
+  checkForNewMessages(node) {
+    const userMessages = node.querySelectorAll ? node.querySelectorAll(this.currentProvider.selectors.userMessage) : [];
+    const assistantMessages = node.querySelectorAll ? node.querySelectorAll(this.currentProvider.selectors.assistantMessage) : [];
+    
+    userMessages.forEach((msg) => {
+      const msgId = this.getMessageId(msg);
+      if (!this.processedMessages.has(msgId)) {
+        this.processMessage(msg, 'user', msgId);
       }
     });
     
-    urlObserver.observe(document.body, {
-      childList: true,
-      subtree: true
+    assistantMessages.forEach((msg) => {
+      const msgId = this.getMessageId(msg);
+      if (!this.processedMessages.has(msgId)) {
+        setTimeout(() => {
+          this.processMessage(msg, 'assistant', msgId);
+        }, 1000);
+      }
     });
-    
-    this.observers.push(urlObserver);
-    this.lastUrl = window.location.href;
   }
   
-  handleQuerySubmission(input) {
-    try {
-      const query = this.extractText(input);
-      
-      if (!query || query.trim().length < 3) return;
-      
-      const estimatedTokens = this.estimateTokens(query);
-      
-      this.queryCount++;
-      this.lastActivity = Date.now();
-      
-      this.sendToBackground({
-        type: 'query_submitted',
-        provider: this.currentProvider.name,
-        queryLength: query.length,
-        estimatedTokens,
-        timestamp: Date.now()
-      });
-      
-      console.log(`Query submitted to ${this.currentProvider.name}: ${estimatedTokens} estimated tokens`);
-      
-    } catch (error) {
-      console.error('Error handling query submission:', error);
-    }
-  }
-  
-  handleResponseGeneration(responseElement) {
-    try {
-      setTimeout(() => {
-        const responseText = this.extractText(responseElement);
-        
-        if (!responseText || responseText.length < 10) return;
-        
-        const estimatedTokens = this.estimateTokens(responseText);
-        
-        this.sendToBackground({
-          type: 'response_generated',
-          provider: this.currentProvider.name,
-          responseLength: responseText.length,
-          estimatedTokens,
-          timestamp: Date.now()
-        });
-        
-        console.log(`Response generated by ${this.currentProvider.name}: ${estimatedTokens} estimated tokens`);
-        
-      }, 2000);
-      
-    } catch (error) {
-      console.error('Error handling response generation:', error);
-    }
-  }
-  
-  handlePageChange() {
-    const isNewConversation = this.detectNewConversation();
-    
-    if (isNewConversation) {
-      this.sendToBackground({
-        type: 'new_conversation',
-        provider: this.currentProvider.name,
-        previousQueryCount: this.queryCount,
-        timestamp: Date.now()
-      });
-      
-      this.queryCount = 0;
-      console.log(`New conversation started on ${this.currentProvider.name}`);
-    }
-  }
-  
-  detectNewConversation() {
-    const url = window.location.href;
-    const pathname = window.location.pathname;
-    
-    if (this.currentProvider.hostname === 'chat.openai.com') {
-      return pathname === '/' || pathname.includes('/c/');
-    } else if (this.currentProvider.hostname === 'claude.ai') {
-      return pathname === '/chat' || pathname.includes('/chat/');
+  getMessageId(element) {
+    if (element.hasAttribute('data-start') && element.hasAttribute('data-end')) {
+      return `assistant-${element.getAttribute('data-start')}-${element.getAttribute('data-end')}`;
     }
     
-    return false;
+    if (element.classList.contains('user-message-bubble-color')) {
+      const text = element.textContent.substring(0, 30).replace(/\s+/g, '-');
+      return `user-${text}-${Date.now()}`;
+    }
+    
+    return element.getAttribute('data-message-id') || 
+           element.getAttribute('data-testid') || 
+           `msg-${element.textContent.substring(0, 30)}-${Date.now()}`;
+  }
+  
+  processMessage(messageElement, type, messageId) {
+    if (this.processedMessages.has(messageId)) {
+      return;
+    }
+    
+    const text = this.extractText(messageElement);
+    if (!text || text.length < 5) {
+      return;
+    }
+    
+    const tokens = this.estimateTokens(text);
+    
+    console.log(` ${type} message: ${tokens} tokens (${text.length} chars)`);
+    console.log(`Text preview: "${text.substring(0, 100)}..."`);
+    
+    this.processedMessages.add(messageId);
+    
+    this.sendToBackground({
+      type: type === 'user' ? 'input_tokens' : 'output_tokens',
+      provider: this.currentProvider.name,
+      tokens: tokens,
+      textLength: text.length,
+      messageType: type,
+      timestamp: Date.now(),
+      messagePreview: text.substring(0, 100)
+    });
   }
   
   extractText(element) {
     if (!element) return '';
     
-    if (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT') {
-      return element.value;
-    } else if (element.contentEditable === 'true') {
-      return element.textContent || element.innerText;
+    let text = '';
+    
+    if (element.classList.contains('user-message-bubble-color')) {
+      const textDiv = element.querySelector('.whitespace-pre-wrap');
+      text = textDiv ? textDiv.textContent : element.textContent;
+    } else if (element.hasAttribute('data-start') && element.hasAttribute('data-end')) {
+      text = element.textContent || element.innerText;
     } else {
-      return element.textContent || element.innerText;
+      const clonedElement = element.cloneNode(true);
+      const elementsToRemove = clonedElement.querySelectorAll('button, svg, .sr-only, [aria-hidden="true"]');
+      elementsToRemove.forEach(el => el.remove());
+      text = clonedElement.textContent || clonedElement.innerText || '';
     }
+    
+    text = text.replace(/\s+/g, ' ').trim();
+    return text;
   }
   
   estimateTokens(text) {
     if (!text || typeof text !== 'string') return 0;
     
-    const words = text.trim().split(/\s+/).length;
-    return Math.ceil(words * 1.3);
+    text = text.trim();
+    if (text.length === 0) return 0;
+    
+    const words = text.split(/\s+/).length;
+    const chars = text.length;
+    
+    const tokenEstimate = Math.max(
+      Math.ceil(words * 1.3),
+      Math.ceil(chars / 4)
+    );
+    
+    return Math.max(tokenEstimate, 1);
   }
   
   sendToBackground(data) {
     try {
-      chrome.storage.local.set({
-        contentScriptData: {
-          ...data,
-          url: window.location.href,
-          title: document.title
-        }
+      chrome.runtime.sendMessage({
+        action: 'trackTokens',
+        data: data
+      }).catch(error => {
+        console.log(' Background script not ready, using storage fallback');
+        chrome.storage.local.get(['tokenData'], (result) => {
+          const existing = result.tokenData || [];
+          existing.push(data);
+          chrome.storage.local.set({ tokenData: existing });
+        });
       });
+      
+      console.log(' Sent to background:', data);
+      
     } catch (error) {
-      console.error('Error sending data to background:', error);
+      console.error(' Error sending to background:', error);
     }
-  }
-  
-  trackPageActivity() {
-    let activityTimer;
-    
-    const resetTimer = () => {
-      clearTimeout(activityTimer);
-      activityTimer = setTimeout(() => {
-        if (this.queryCount > 0) {
-          this.sendToBackground({
-            type: 'session_summary',
-            provider: this.currentProvider.name,
-            totalQueries: this.queryCount,
-            sessionDuration: Date.now() - this.lastActivity,
-            timestamp: Date.now()
-          });
-        }
-      }, 300000);
-    };
-    
-    ['mousedown', 'keydown', 'scroll', 'touchstart'].forEach(event => {
-      document.addEventListener(event, resetTimer, { passive: true });
-    });
-    
-    resetTimer();
   }
   
   cleanup() {
     this.observers.forEach(observer => observer.disconnect());
     this.observers = [];
+    this.processedMessages.clear();
   }
 }
 
-let detector = null;
+let tracker = null;
+
+function initTracker() {
+  console.log(' Initializing tracker...');
+  if (tracker) {
+    tracker.cleanup();
+  }
+  tracker = new ChatGPTTracker();
+}
+
+// Multiple initialization strategies to ensure loading
+console.log(' Content script document state:', document.readyState);
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    detector = new LLMWebsiteDetector();
+  document.addEventListener('DOMContentLoaded', initTracker);
+  document.addEventListener('readystatechange', () => {
+    if (document.readyState === 'interactive' || document.readyState === 'complete') {
+      initTracker();
+    }
   });
 } else {
-  detector = new LLMWebsiteDetector();
+  initTracker();
 }
 
+// Also try after a delay
+setTimeout(initTracker, 1000);
+setTimeout(initTracker, 3000);
+
 window.addEventListener('beforeunload', () => {
-  if (detector) {
-    detector.cleanup();
+  if (tracker) {
+    tracker.cleanup();
   }
 });
+
+setTimeout(() => {
+  if (tracker && tracker.isActive) {
+    tracker.scanExistingMessages();
+  }
+}, 3000);
+
+// Global function for manual testing
+window.testLLMTracker = function() {
+  console.log(' Manual test started');
+  if (tracker) {
+    console.log(' Tracker exists:', tracker.isActive);
+    console.log(' Current provider:', tracker.currentProvider?.name);
+    tracker.scanExistingMessages();
+  } else {
+    console.log(' No tracker found');
+  }
+};

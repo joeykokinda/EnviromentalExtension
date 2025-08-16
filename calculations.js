@@ -1,4 +1,4 @@
-export function calculateEnvironmentalImpact(tokens) {
+function calculateEnvironmentalImpact(tokens) {
   const ENERGY_PER_TOKEN_WH = 0.001;
   const CARBON_PER_TOKEN_GRAMS = 0.5;
   const WATER_PER_TOKEN_ML = 0.1;
@@ -10,7 +10,7 @@ export function calculateEnvironmentalImpact(tokens) {
   };
 }
 
-export function estimateTokens(requestData, provider) {
+function estimateTokens(requestData, provider) {
   if (!requestData) return 100;
   
   let estimatedTokens = 0;
@@ -113,7 +113,7 @@ function estimateTextTokens(text) {
   return Math.ceil(words * 1.3);
 }
 
-export function formatNumber(num, decimals = 1) {
+function formatNumber(num, decimals = 1) {
   if (num === 0) return '0';
   
   if (num < 1) {
@@ -127,13 +127,13 @@ export function formatNumber(num, decimals = 1) {
   }
 }
 
-export function getImpactLevel(carbonGrams) {
+function getImpactLevel(carbonGrams) {
   if (carbonGrams < 10) return 'low';
   if (carbonGrams < 50) return 'medium';
   return 'high';
 }
 
-export function getComparisonMetrics(data) {
+function getComparisonMetrics(data) {
   const { energyWh, carbonGrams, waterMl } = data;
   
   return {
@@ -145,7 +145,7 @@ export function getComparisonMetrics(data) {
   };
 }
 
-export function getDailyGoalProgress(currentCarbon, dailyGoal = 100) {
+function getDailyGoalProgress(currentCarbon, dailyGoal = 100) {
   const percentage = Math.min((currentCarbon / dailyGoal) * 100, 100);
   return {
     percentage: percentage.toFixed(1),
@@ -154,7 +154,7 @@ export function getDailyGoalProgress(currentCarbon, dailyGoal = 100) {
   };
 }
 
-export function getEfficiencyTips(data) {
+function getEfficiencyTips(data) {
   const tips = [];
   
   if (data.queries > 20) {

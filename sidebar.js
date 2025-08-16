@@ -1,9 +1,8 @@
-// Functions are loaded from calculations.js via script tag in popup.html
-
-class PopupManager {
+class SidebarManager {
   constructor() {
     this.data = null;
     this.updateInterval = null;
+    this.isRefreshing = false;
     this.init();
   }
   
@@ -14,9 +13,9 @@ class PopupManager {
       this.updateDisplay();
       this.startAutoUpdate();
       
-      console.log('Popup initialized successfully');
+      console.log('Sidebar initialized successfully');
     } catch (error) {
-      console.error('Error initializing popup:', error);
+      console.error('Error initializing sidebar:', error);
       this.showError('Failed to load data');
     }
   }
@@ -43,9 +42,11 @@ class PopupManager {
   }
   
   setupEventListeners() {
+    const refreshBtn = document.getElementById('refreshBtn');
     const resetBtn = document.getElementById('resetBtn');
     const detailsBtn = document.getElementById('detailsBtn');
     
+    refreshBtn?.addEventListener('click', () => this.handleRefresh());
     resetBtn?.addEventListener('click', () => this.handleReset());
     detailsBtn?.addEventListener('click', () => this.handleDetails());
     
@@ -54,6 +55,38 @@ class PopupManager {
         this.loadData().then(() => this.updateDisplay());
       }
     });
+  }
+  
+  async handleRefresh() {
+    if (this.isRefreshing) return;
+    
+    this.isRefreshing = true;
+    const refreshBtn = document.getElementById('refreshBtn');
+    
+    if (refreshBtn) {
+      refreshBtn.classList.add('refreshing');
+      refreshBtn.disabled = true;
+    }
+    
+    try {
+      await this.loadData();
+      this.updateDisplay();
+      this.updateStatus('Data refreshed');
+      
+      setTimeout(() => {
+        this.updateStatus('Monitoring');
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      this.showError('Failed to refresh data');
+    } finally {
+      this.isRefreshing = false;
+      if (refreshBtn) {
+        refreshBtn.classList.remove('refreshing');
+        refreshBtn.disabled = false;
+      }
+    }
   }
   
   updateDisplay() {
@@ -65,7 +98,8 @@ class PopupManager {
     this.updateComparisons();
     this.updateProgress();
     this.updateTips();
-    this.updateFooter();
+    this.updateStatus('Monitoring');
+    this.updateLastUpdated();
   }
   
   updateHeader() {
@@ -74,7 +108,8 @@ class PopupManager {
       const today = new Date();
       dateElement.textContent = today.toLocaleDateString('en-US', {
         month: 'short',
-        day: 'numeric'
+        day: 'numeric',
+        year: 'numeric'
       });
     }
   }
@@ -180,13 +215,21 @@ class PopupManager {
     }
   }
   
-  updateFooter() {
+  updateStatus(status) {
+    const statusElement = document.getElementById('trackingStatus');
+    if (statusElement) {
+      statusElement.textContent = status;
+    }
+  }
+  
+  updateLastUpdated() {
     const lastUpdated = document.getElementById('lastUpdated');
     if (lastUpdated) {
       const now = new Date();
       lastUpdated.textContent = now.toLocaleTimeString('en-US', {
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        second: '2-digit'
       });
     }
   }
@@ -206,6 +249,11 @@ class PopupManager {
       await chrome.runtime.sendMessage({ action: 'resetData' });
       await this.loadData();
       this.updateDisplay();
+      this.updateStatus('Data reset');
+      
+      setTimeout(() => {
+        this.updateStatus('Monitoring');
+      }, 2000);
       
       if (resetBtn) {
         resetBtn.textContent = 'Reset Today';
@@ -225,7 +273,7 @@ class PopupManager {
   }
   
   showError(message) {
-    const container = document.querySelector('.container');
+    const container = document.querySelector('.sidebar-container');
     if (!container) return;
     
     const existingError = container.querySelector('.error');
@@ -246,9 +294,11 @@ class PopupManager {
   
   startAutoUpdate() {
     this.updateInterval = setInterval(async () => {
-      await this.loadData();
-      this.updateDisplay();
-    }, 30000);
+      if (!this.isRefreshing) {
+        await this.loadData();
+        this.updateDisplay();
+      }
+    }, 10000); // Update every 10 seconds for sidebar
   }
   
   stopAutoUpdate() {
@@ -260,11 +310,11 @@ class PopupManager {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  new PopupManager();
+  new SidebarManager();
 });
 
 window.addEventListener('beforeunload', () => {
-  if (window.popupManager) {
-    window.popupManager.stopAutoUpdate();
+  if (window.sidebarManager) {
+    window.sidebarManager.stopAutoUpdate();
   }
 });

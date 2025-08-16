@@ -5,18 +5,15 @@
   "description": "Track the environmental impact of your AI/LLM usage",
   
   "permissions": [
-    "webRequest",
     "storage",
-    "activeTab"
+    "activeTab",
+    "alarms",
+    "sidePanel"
   ],
   
   "host_permissions": [
-    "https://api.openai.com/*",
-    "https://api.anthropic.com/*",
-    "https://api.cohere.ai/*",
-    "https://api.together.xyz/*",
-    "https://api.replicate.com/*",
     "https://chat.openai.com/*",
+    "https://chatgpt.com/*",
     "https://claude.ai/*",
     "https://bard.google.com/*",
     "https://gemini.google.com/*"
@@ -27,20 +24,25 @@
   },
   
   "action": {
-    "default_popup": "popup.html",
     "default_title": "LLM Environmental Impact"
+  },
+  
+  "side_panel": {
+    "default_path": "sidebar.html"
   },
   
   "content_scripts": [
     {
       "matches": [
         "https://chat.openai.com/*",
+        "https://chatgpt.com/*",
         "https://claude.ai/*",
         "https://bard.google.com/*",
         "https://gemini.google.com/*"
       ],
-      "js": ["content.js"],
-      "run_at": "document_idle"
+      "js": ["content-direct.js"],
+      "run_at": "document_start",
+      "all_frames": true
     }
   ],
   

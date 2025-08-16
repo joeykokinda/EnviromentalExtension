@@ -25,10 +25,31 @@ class LLMTracker {
   
   async init() {
     await this.loadDailyData();
-    this.setupWebRequestListener();
     this.setupStorageListener();
+    this.setupAlarms();
     
-    console.log('LLM Environmental Impact Tracker initialized');
+    console.log(' LLM Environmental Impact Tracker initialized');
+    console.log(' Current data:', this.dailyData);
+  }
+  
+  setupAlarms() {
+    chrome.alarms.onAlarm.addListener((alarm) => {
+      if (alarm.name === 'dailyReset') {
+        this.resetDailyData();
+      }
+    });
+    
+    chrome.alarms.create('dailyReset', {
+      when: this.getNextMidnight(),
+      periodInMinutes: 24 * 60
+    });
+  }
+  
+  getNextMidnight() {
+    const now = new Date();
+    const midnight = new Date(now);
+    midnight.setHours(24, 0, 0, 0);
+    return midnight.getTime();
   }
   
   async loadDailyData() {
@@ -55,102 +76,20 @@ class LLMTracker {
     }
   }
   
-  setupWebRequestListener() {
-    chrome.webRequest.onBeforeRequest.addListener(
-      (details) => this.handleRequest(details),
-      {
-        urls: [
-          "https://api.openai.com/v1/*",
-          "https://api.anthropic.com/v1/*",
-          "https://api.cohere.ai/v1/*",
-          "https://api.together.xyz/inference",
-          "https://api.replicate.com/v1/*"
-        ]
-      },
-      ["requestBody"]
-    );
-    
-    chrome.webRequest.onCompleted.addListener(
-      (details) => this.handleResponse(details),
-      {
-        urls: [
-          "https://api.openai.com/v1/*",
-          "https://api.anthropic.com/v1/*",
-          "https://api.cohere.ai/v1/*",
-          "https://api.together.xyz/inference",
-          "https://api.replicate.com/v1/*"
-        ]
-      },
-      ["responseHeaders"]
-    );
-  }
+
   
   setupStorageListener() {
     chrome.storage.onChanged.addListener((changes, namespace) => {
       if (namespace === 'local' && changes.contentScriptData) {
         this.handleContentScriptData(changes.contentScriptData.newValue);
       }
+      if (namespace === 'local' && changes.tokenData) {
+        this.handleTokenData(changes.tokenData.newValue);
+      }
     });
   }
   
-  async handleRequest(details) {
-    try {
-      const url = new URL(details.url);
-      const provider = this.getProvider(url.hostname);
-      
-      if (!provider) return;
-      
-      let requestData = {};
-      if (details.requestBody && details.requestBody.raw) {
-        const decoder = new TextDecoder();
-        const bodyText = decoder.decode(details.requestBody.raw[0].bytes);
-        requestData = JSON.parse(bodyText);
-      }
-      
-      const estimatedTokens = estimateTokens(requestData, provider);
-      
-      await this.updateMetrics({
-        provider,
-        requestTokens: estimatedTokens,
-        type: 'request'
-      });
-      
-    } catch (error) {
-      console.error('Error handling request:', error);
-    }
-  }
-  
-  async handleResponse(details) {
-    try {
-      if (details.statusCode !== 200) return;
-      
-      const url = new URL(details.url);
-      const provider = this.getProvider(url.hostname);
-      
-      if (!provider) return;
-      
-      const usageHeader = details.responseHeaders?.find(
-        h => h.name.toLowerCase() === 'x-ratelimit-remaining-tokens' || 
-             h.name.toLowerCase() === 'anthropic-ratelimit-tokens-remaining'
-      );
-      
-      let responseTokens = 0;
-      if (usageHeader) {
-        responseTokens = parseInt(usageHeader.value) || 0;
-      } else {
-        responseTokens = 150;
-      }
-      
-      await this.updateMetrics({
-        provider,
-        responseTokens,
-        type: 'response'
-      });
-      
-    } catch (error) {
-      console.error('Error handling response:', error);
-    }
-  }
+
   
   async handleContentScriptData(data) {
     if (!data) return;
@@ -166,6 +105,48 @@ class LLMTracker {
       
     } catch (error) {
       console.error('Error handling content script data:', error);
+    }
+  }
+  
+  async handleTokenTracking(data) {
+    if (!data || !data.tokens) {
+      console.log(' Invalid token data received:', data);
+      return;
+    }
+    
+    try {
+      console.log(` Background received: ${data.tokens} ${data.type} tokens from ${data.provider}`);
+      console.log(` Message preview: "${data.messagePreview}"`);
+      
+      const tokens = data.tokens;
+      const impact = calculateEnvironmentalImpact(tokens);
+      
+      await this.updateMetricsFromTokens({
+        provider: data.provider,
+        tokens: tokens,
+        type: data.type,
+        messageType: data.messageType
+      });
+      
+      console.log(` Impact calculated: ${impact.energyWh}Wh, ${impact.carbonGrams}g CO2, ${impact.waterMl}ml water`);
+      
+    } catch (error) {
+      console.error(' Error handling token tracking:', error);
+    }
+  }
+  
+  async handleTokenData(tokenDataArray) {
+    if (!tokenDataArray || !Array.isArray(tokenDataArray)) return;
+    
+    try {
+      for (const data of tokenDataArray) {
+        await this.handleTokenTracking(data);
+      }
+      
+      await chrome.storage.local.remove(['tokenData']);
+      
+    } catch (error) {
+      console.error('Error handling token data array:', error);
     }
   }
   
@@ -188,6 +169,31 @@ class LLMTracker {
     await this.saveDailyData();
     
     console.log(`Updated metrics: ${tokens} tokens, Provider: ${data.provider}`);
+  }
+  
+  async updateMetricsFromTokens(data) {
+    const today = new Date().toDateString();
+    
+    if (this.dailyData.date !== today) {
+      await this.resetDailyData();
+    }
+    
+    const tokens = data.tokens;
+    const impact = calculateEnvironmentalImpact(tokens);
+    
+    if (data.messageType === 'user') {
+      this.dailyData.queries += 1;
+    }
+    
+    this.dailyData.totalTokens += tokens;
+    this.dailyData.energyWh += impact.energyWh;
+    this.dailyData.carbonGrams += impact.carbonGrams;
+    this.dailyData.waterMl += impact.waterMl;
+    
+    await this.saveDailyData();
+    
+    console.log(` Updated metrics: ${tokens} ${data.messageType} tokens from ${data.provider}`);
+    console.log(` Total today: ${this.dailyData.totalTokens} tokens, ${this.dailyData.queries} queries`);
   }
   
   async resetDailyData() {
@@ -221,6 +227,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     tracker.resetDailyData().then(() => {
       sendResponse({ success: true });
     });
+  } else if (request.action === 'trackTokens') {
+    tracker.handleTokenTracking(request.data);
+    sendResponse({ success: true });
   }
   return true;
+});
+
+// Handle extension icon click to open sidebar
+chrome.action.onClicked.addListener((tab) => {
+  chrome.sidePanel.open({ tabId: tab.id });
 });
